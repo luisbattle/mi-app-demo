@@ -1,0 +1,76 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY_USER: ${{ secrets.DOCKER_USERNAME }}
+  IMAGE_NAME: mi-app-demo
+  # Usamos el repositorio GitOps en tu cuenta luisbattle
+  GITOPS_REPO: luisbattle/mi-app-gitops
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Código de la App
+      uses: actions/checkout@v4
+
+    # 1. Configurar QEMU y Docker Buildx (Excelente práctica SRE para builds eficientes)
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # 2. Login en Docker Hub
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    # 3. Build y Push de la Imagen Docker usando el hash del commit como tag
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ env.REGISTRY_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          ${{ env.REGISTRY_USER }}/${{ env.IMAGE_NAME }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    # 4. Checkout del Repositorio de GitOps
+    - name: Checkout del Repositorio de GitOps
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.GITOPS_REPO }}
+        token: ${{ secrets.GIT_AUTOMATION_TOKEN }}
+        path: gitops-repo # Lo descargamos en una subcarpeta dedicada
+
+    # 5. Instalar Kustomize y actualizar el tag de la imagen
+    - name: Actualizar Tag de la Imagen con Kustomize
+      run: |
+        cd gitops-repo
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        # Reemplaza la imagen 'mi-app-demo' por la nueva versión con el hash de GitHub
+        ./kustomize edit set image mi-app-demo=${{ env.REGISTRY_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+    # 6. Push de los cambios al repositorio de GitOps
+    - name: Push de la nueva versión a GitOps
+      run: |
+        cd gitops-repo
+        git config --global user.name "CI Bot"
+        git config --global user.email "ci-bot@infra.local"
+        
+        # Solo hacemos commit si realmente hubo un cambio en el kustomization.yaml
+        if ! git diff --quiet; then
+          git add kustomization.yaml
+          git commit -m "chore(cd): bump image to version ${{ github.sha }} [skip ci]"
+          git push origin main
+        else
+          echo "No se detectaron cambios en los manifiestos."
+        fi
