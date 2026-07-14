@@ -51,14 +51,16 @@ jobs:
         token: ${{ secrets.GIT_AUTOMATION_TOKEN }}
         path: gitops-repo # Lo descargamos en una subcarpeta dedicada
 
-    # 5. Instalar Kustomize y actualizar el tag de la imagen
+# 5. Instalar Kustomize de forma segura usando la Action oficial
+    - name: Setup Kustomize
+      uses: imranismail/setup-kustomize@v2
+
+    # 5b. Actualizar el tag de la imagen
     - name: Actualizar Tag de la Imagen con Kustomize
       run: |
         cd gitops-repo
-        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-        # Reemplaza la imagen 'mi-app-demo' por la nueva versión con el hash de GitHub
-        ./kustomize edit set image mi-app-demo=${{ env.REGISTRY_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
+        # kustomize ya está en el PATH global del sistema gracias al paso anterior
+        kustomize edit set image mi-app-demo=${{ env.REGISTRY_USER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
     # 6. Push de los cambios al repositorio de GitOps
     - name: Push de la nueva versión a GitOps
       run: |
