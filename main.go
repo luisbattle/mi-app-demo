@@ -11,8 +11,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":    "healthy",
-			"message":   "Golang demo corriendo en K8s!!!",
-			"version":   "1.0.0",
+			"message":   "Golang demo corriendo en K8s con CI/CD Automatico!!!",
+			"version":   "1.0.1",
 			"timestamp": time.Now(),
 		})
 	})
